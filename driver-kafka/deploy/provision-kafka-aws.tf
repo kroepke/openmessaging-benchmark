@@ -1,5 +1,5 @@
 provider "aws" {
-  region  = "${var.region}"
+  region  = var.region
   version = "~> 2.7"
   profile = var.profile
 }
@@ -29,16 +29,18 @@ variable "key_name" {
 
 variable "region" {}
 
-variable "ami" {}
-
 variable "profile" {}
 
 variable "instance_types" {
-  type = "map"
+  type = map(string)
 }
 
 variable "num_instances" {
-  type = "map"
+  type = map(string)
+}
+
+variable "ami_per_region" {
+  type = map(string)
 }
 
 # Create a VPC to launch our instances into
@@ -52,22 +54,22 @@ resource "aws_vpc" "benchmark_vpc" {
 
 # Create an internet gateway to give our subnet access to the outside world
 resource "aws_internet_gateway" "kafka" {
-  vpc_id = "${aws_vpc.benchmark_vpc.id}"
+  vpc_id = aws_vpc.benchmark_vpc.id
 }
 
 # Grant the VPC internet access on its main route table
 resource "aws_route" "internet_access" {
-  route_table_id         = "${aws_vpc.benchmark_vpc.main_route_table_id}"
+  route_table_id         = aws_vpc.benchmark_vpc.main_route_table_id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = "${aws_internet_gateway.kafka.id}"
+  gateway_id             = aws_internet_gateway.kafka.id
 }
 
 # Create a subnet to launch our instances into
 resource "aws_subnet" "benchmark_subnet" {
-  vpc_id                  = "${aws_vpc.benchmark_vpc.id}"
+  vpc_id                  = aws_vpc.benchmark_vpc.id
   cidr_block              = "10.0.0.0/24"
   map_public_ip_on_launch = true
-  availability_zone       = "us-west-2b"
+  availability_zone       = "${var.region}b"
 }
 
 # Get public IP of this machine
@@ -77,15 +79,7 @@ data "http" "myip" {
 
 resource "aws_security_group" "benchmark_security_group" {
   name   = "terraform-kafka-${random_id.hash.hex}"
-  vpc_id = "${aws_vpc.benchmark_vpc.id}"
-
-  # SSH access from anywhere
-  # ingress {
-  #   from_port   = 22
-  #   to_port     = 22
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
+  vpc_id = aws_vpc.benchmark_vpc.id
 
   # All ports open within the VPC
   ingress {
@@ -103,20 +97,6 @@ resource "aws_security_group" "benchmark_security_group" {
     cidr_blocks = ["${chomp(data.http.myip.body)}/32"]
   }
 
-  # Prometheus/Dashboard access
-  # ingress {
-  #   from_port   = 9090
-  #   to_port     = 9090
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
-  # ingress {
-  #   from_port   = 3000
-  #   to_port     = 3000
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
-
   # outbound internet access
   egress {
     from_port   = 0
@@ -132,16 +112,16 @@ resource "aws_security_group" "benchmark_security_group" {
 
 resource "aws_key_pair" "auth" {
   key_name   = "${var.key_name}-${random_id.hash.hex}"
-  public_key = "${file(var.public_key_path)}"
+  public_key = file(var.public_key_path)
 }
 
 resource "aws_instance" "zookeeper" {
-  ami                    = "${var.ami}"
-  instance_type          = "${var.instance_types["zookeeper"]}"
-  key_name               = "${aws_key_pair.auth.id}"
-  subnet_id              = "${aws_subnet.benchmark_subnet.id}"
-  vpc_security_group_ids = ["${aws_security_group.benchmark_security_group.id}"]
-  count                  = "${var.num_instances["zookeeper"]}"
+  ami                    = var.ami_per_region[var.region]
+  instance_type          = var.instance_types["zookeeper"]
+  key_name               = aws_key_pair.auth.id
+  subnet_id              = aws_subnet.benchmark_subnet.id
+  vpc_security_group_ids = [aws_security_group.benchmark_security_group.id]
+  count                  = var.num_instances["zookeeper"]
   monitoring             = true
 
   tags = {
@@ -150,12 +130,12 @@ resource "aws_instance" "zookeeper" {
 }
 
 resource "aws_instance" "kafka" {
-  ami                    = "${var.ami}"
-  instance_type          = "${var.instance_types["kafka"]}"
-  key_name               = "${aws_key_pair.auth.id}"
-  subnet_id              = "${aws_subnet.benchmark_subnet.id}"
-  vpc_security_group_ids = ["${aws_security_group.benchmark_security_group.id}"]
-  count                  = "${var.num_instances["kafka"]}"
+  ami                    = var.ami_per_region[var.region]
+  instance_type          = var.instance_types["kafka"]
+  key_name               = aws_key_pair.auth.id
+  subnet_id              = aws_subnet.benchmark_subnet.id
+  vpc_security_group_ids = [aws_security_group.benchmark_security_group.id]
+  count                  = var.num_instances["kafka"]
   monitoring             = true
 
   tags = {
@@ -164,12 +144,12 @@ resource "aws_instance" "kafka" {
 }
 
 resource "aws_instance" "client" {
-  ami                    = "${var.ami}"
-  instance_type          = "${var.instance_types["client"]}"
-  key_name               = "${aws_key_pair.auth.id}"
-  subnet_id              = "${aws_subnet.benchmark_subnet.id}"
-  vpc_security_group_ids = ["${aws_security_group.benchmark_security_group.id}"]
-  count                  = "${var.num_instances["client"]}"
+  ami                    = var.ami_per_region[var.region]
+  instance_type          = var.instance_types["client"]
+  key_name               = aws_key_pair.auth.id
+  subnet_id              = aws_subnet.benchmark_subnet.id
+  vpc_security_group_ids = [aws_security_group.benchmark_security_group.id]
+  count                  = var.num_instances["client"]
   monitoring             = true
 
   tags = {
@@ -178,12 +158,12 @@ resource "aws_instance" "client" {
 }
 
 resource "aws_instance" "prometheus" {
-  ami                    = "${var.ami}"
-  instance_type          = "${var.instance_types["prometheus"]}"
-  key_name               = "${aws_key_pair.auth.id}"
-  subnet_id              = "${aws_subnet.benchmark_subnet.id}"
-  vpc_security_group_ids = ["${aws_security_group.benchmark_security_group.id}"]
-  count                  = "${var.num_instances["prometheus"]}"
+  ami                    = var.ami_per_region[var.region]
+  instance_type          = var.instance_types["prometheus"]
+  key_name               = aws_key_pair.auth.id
+  subnet_id              = aws_subnet.benchmark_subnet.id
+  vpc_security_group_ids = [aws_security_group.benchmark_security_group.id]
+  count                  = var.num_instances["prometheus"]
 
   tags = {
     Name = "prometheus-${count.index}"
@@ -212,5 +192,9 @@ output "zookeeper" {
 }
 
 output "prometheus_host" {
-  value = "${aws_instance.prometheus.0.public_ip}"
+  value = aws_instance.prometheus[0].public_ip
+}
+
+output "client_ssh_host" {
+  value = aws_instance.client[0].public_ip
 }
