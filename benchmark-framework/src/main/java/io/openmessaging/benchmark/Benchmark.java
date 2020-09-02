@@ -42,6 +42,8 @@ import io.openmessaging.benchmark.worker.DistributedWorkersEnsemble;
 import io.openmessaging.benchmark.worker.LocalWorker;
 import io.openmessaging.benchmark.worker.Worker;
 
+import javax.annotation.Nullable;
+
 public class Benchmark {
 
     static class Arguments {
@@ -152,7 +154,7 @@ public class Benchmark {
 
                     TestResult result = generator.run();
 
-                    String fileName = arguments.output.length() > 0 ? arguments.output
+                    String fileName = arguments.output !=null && arguments.output.length() > 0 ? arguments.output
                             : String.format("%s-%s-%s.json", workloadName, driverConfiguration.name,
                                     dateFormat.format(new Date()));
 
