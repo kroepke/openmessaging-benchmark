@@ -67,6 +67,7 @@ public class Benchmark {
         public List<String> workloads;
 
         @Parameter(names = { "-o", "--output" }, description = "Output", required = false)
+        @Nullable
         public String output;
     }
 
